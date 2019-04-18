@@ -1,18 +1,18 @@
 function genSingleH5s(inStruc, confgData)
-    %% Top level code that inputs inStruc and confgData to generate single 
-    %% H5 datacube
-    %  searches for all relevant .nc granules (using fd_matchup.py and NASA's
-    %  CMR interface).  Datacubes are formed from all the local .nc granules
-    %
-    % USAGE:
-    %   genSingleH5s
-    % INPUT:
-    %   -
-    % OUTPUT:
-    %   -
-    % THE UNIVERSITY OF BRISTOL: HAB PROJECT
-    % Author Dr Paul Hill March 2019
-    % Updated March 2019 PRH
+%% Code that inputs inStruc and confgData to generate single
+%% H5 datacube.
+%  Searches for all relevant .nc granules (using fd_matchup.py and NASA's
+%  CMR interface).  Datacubes are formed from all the local .nc granules
+%
+% USAGE:
+%   genSingleH5s(inStruc, confgData)
+% INPUT:
+%   -
+% OUTPUT:
+%   -
+% THE UNIVERSITY OF BRISTOL: HAB PROJECT
+% Author Dr Paul Hill March 2019
+% Updated March 2019 PRH
 
     inStruc.zoneHrDiff = timezone(inStruc.thisLon);
     % Adjust input time / date: Assume that the sample is taken at 11pm
@@ -29,11 +29,14 @@ function genSingleH5s(inStruc, confgData)
 
     if exist(inStruc.h5name, 'file')==2;  delete(inStruc.h5name);  end
 
-    %Put images, count, dates and deltadates into output .H5 file
-    addDataH5(inStruc, confgData);
-    getModData(inStruc, confgData);
+%Put images, count, dates and deltadates into output H5 file
+addDataH5(inStruc, confgData);
+
+%Get all modality data from NASA and put into datacube
+getModData(inStruc, confgData);
 
 end
+
 function addDataH5(inStruc, confgData)
 %% addDataH5 creates a H5 file and stores ground truth data to it
 %  Adds extracted information to one H5 file per datapoint in ground truth
@@ -100,17 +103,39 @@ function getModData(inStruc, confgData)
     utmstruct.zone = zone;
     utmstruct.geoid = wgs84Ellipsoid; %almanac('earth','grs80','meters');
     utmstruct = defaultm(utmstruct);
-
-    %% Loop through all the modulations
-    for modIndex = 1:numberOfMods
-        thisMod = confgData.mods{modIndex}.Text;
-        subMods = strsplit(thisMod,'-');
-        h5writeatt(inStruc.h5name,'/GroundTruth', 'Projection', ['utm wgs84Ellipsoid ' zone] );
-
-        if strcmp(subMods{1},'gebco')
-            [elevationIm, elevationPoints, elevationPointsProj] = getGEBCOData(confgData, thisLat, thisLon, utmstruct);
-            addToH5(inStruc.h5name, thisMod, elevationIm, 0, 0, elevationPoints, elevationPointsProj);
-            continue;
+    
+    h5writeatt(inStruc.h5name,'/GroundTruth', 'Projection', ['utm wgs84Ellipsoid ' zone] );
+    
+    if strcmp(subMods{1},'gebco')
+        [elevationIm, elevationPoints, elevationPointsProj] = getGEBCOData(confgData, thisLat, thisLon, utmstruct);
+        addToH5(inStruc.h5name, thisMod, elevationIm, 0, 0, elevationPoints, elevationPointsProj);
+        continue;
+    end
+    % product suites are either oc, iop or sst
+    % sensors are either modisa,modist,viirsn,goci,meris,czcs,octs or 'seawifs'
+    % sst: sstref, sst4, sst 1Km resolution for all sst
+    % Search for "granules" at a particular lat, long and date range (output goes in Output.txt)
+    
+    
+    pyOpt = [' --data_type=' subMods{1} ' --sat=' subMods{2} ' --slat=' num2str(thisLat) ...
+        ' --slon=' num2str(thisLon) ' --stime=' dayStartS UTCTime ' --etime=' dayEndS UTCTime];
+    disp(['Searching granules for: --mod=',subMods{3}, pyOpt])
+    exeName = [confgData.pythonStr ' fd_matchup.py', pyOpt,' > cmdOut.txt'];
+    system(exeName);
+    
+    %% Loop through .nc files, veryify and download / extract
+    
+    fid = fopen('Output.txt');
+    tline = fgetl(fid);
+    indInput = 1;  clear thisInput; clear thisList;
+    while ischar(tline)
+        [~,nc_name,~] = fileparts(tline);
+        if nc_name(end) ~= '4'   %ignore SST4
+            thisDate=julian2time(nc_name(2:14));
+            thisInput(indInput).line = tline;
+            thisInput(indInput).date = thisDate;
+            thisInput(indInput).deltadate = inStruc.dayEndFraction-thisDate;
+            indInput = indInput + 1;
         end
         % product suites are either oc, iop or sst
         % sensors are either modisa,modist,viirsn,goci,meris,czcs,octs or 'seawifs'
@@ -233,25 +258,25 @@ function t=julian2time(str)
 end
 
 function addToH5(h5name, thisMod, theseImages, theseDates, theseDeltaDates, thesePointsOutput, thesePointsOutputProj)
-    %% add Ims, theseDates, theseDeltaDates and Points to output H5 file
-    %
-    % USAGE:
-    %   addToH5(h5name, thisMod, theseImages, theseDates, theseDeltaDates, thesePointsOutput)
-    % INPUT:
-    %   h5name - name of H5 name to be output
-    %   thisMod = Name of the output modality
-    %   theseImages - Cell array of output binned images (for this modality)
-    %   theseDates - The actual capture dates of the points and images output
-    %   theseDeltaDates - The delta dates (difference from capture date) of the points and images output
-    %   thesePointsOutput - 4D Array of points output
-    %   thesePointsOutputProj - 4D Array of projected points output
-    % OUTPUT:
-    %   -
-    hdf5write(h5name,['/' thisMod  '/Ims'],theseImages, 'WriteMode','append');
-    hdf5write(h5name,['/' thisMod  '/theseDates'],theseDates, 'WriteMode','append');
-    hdf5write(h5name,['/' thisMod  '/theseDeltaDates'],theseDeltaDates, 'WriteMode','append');
-    hdf5write(h5name,['/' thisMod  '/Points'],thesePointsOutput, 'WriteMode','append');
-    hdf5write(h5name,['/' thisMod  '/PointsProj'],thesePointsOutputProj, 'WriteMode','append');
+%% add Ims, theseDates, theseDeltaDates and Points to output H5 file
+%
+% USAGE:
+%   addToH5(h5name, thisMod, theseImages, theseDates, theseDeltaDates, thesePointsOutput, thesePointsOutputProj)
+% INPUT:
+%   h5name - name of H5 name to be output
+%   thisMod = Name of the output modality
+%   theseImages - Cell array of output binned images (for this modality)
+%   theseDates - The actual capture dates of the points and images output
+%   theseDeltaDates - The delta dates (difference from capture date) of the points and images output
+%   thesePointsOutput - 4D Array of points output
+%   thesePointsOutputProj - 4D Array of projected points output
+% OUTPUT:
+%   -
+hdf5write(h5name,['/' thisMod  '/Ims'],theseImages, 'WriteMode','append');
+hdf5write(h5name,['/' thisMod  '/theseDates'],theseDates, 'WriteMode','append');
+hdf5write(h5name,['/' thisMod  '/theseDeltaDates'],theseDeltaDates, 'WriteMode','append');
+hdf5write(h5name,['/' thisMod  '/Points'],thesePointsOutput, 'WriteMode','append');
+hdf5write(h5name,['/' thisMod  '/PointsProj'],thesePointsOutputProj, 'WriteMode','append');
 end
 
 function logErr(e,str_iden)

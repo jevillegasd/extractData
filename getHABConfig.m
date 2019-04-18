@@ -2,7 +2,7 @@ function [confgData] = getHABConfig(xmlConfig)
 %% This Code generates the remove command and configuration information
 %
 % USAGE:
-%   [rmcommand, confgData] = getHABConfig
+%   [confgData] = getHABConfig
 % INPUT:
 %   -
 % OUTPUT:
@@ -11,7 +11,7 @@ function [confgData] = getHABConfig(xmlConfig)
 %   tmpStruct: configuration information extracted from config file
 
 % THE UNIVERSITY OF BRISTOL: HAB PROJECT
-% Author Dr Paul Hill March 2019
+% Author Dr Paul Hill April 2019
 
     if ismac
         rmcommand = 'rm ';
