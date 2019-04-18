@@ -14,7 +14,7 @@ function getDataOuter
     % Updated March 2019 PRH
     % Updates for WIN compatibility: JVillegas 21 Feb 2019, Khalifa University
     %%%%%%%%%%
-    
+
     clear; close all;
 
     %% load all config from XML file
@@ -52,7 +52,7 @@ function getDataOuter
             
             fileName = ['Cube_' sprintf('%05d',outputIndex) '_' sprintf('%05d',ii) '_' num2str(groundData.sample_date(ii)) '.h5'];
             
-            if isLandGEBCO(inStruc, confgData);  continue;  end
+            if isLandGEBCO(inStruc, confgData);  continue;  end  %Check if the point is on water
             
             inStruc.h5name = [confgData.outDir fileName];
             
